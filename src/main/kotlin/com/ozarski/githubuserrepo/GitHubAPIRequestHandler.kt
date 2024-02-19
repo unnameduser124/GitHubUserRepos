@@ -4,6 +4,8 @@ import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import com.ozarski.github_api.dataclasses.Branch
 import com.ozarski.github_api.dataclasses.Repo
+import com.ozarski.githubuserrepo.dataclasses.GraphQLDataUser
+import com.ozarski.githubuserrepo.dataclasses.GraphQLResponse
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -98,10 +100,16 @@ class GitHubAPIRequestHandler(private val okHttpClient: OkHttpClient, private va
     }
 
     //solution using GraphQL API (same result data but less requests)
-    fun getReposWithBranchesGraphQL(username: String): String {
-        val query = """{ "query": "query{ user(login: \"$username\") { login repositories(isFork: false, first: $DEFAULT_PAGE_SIZE) { nodes { name refs(first: $DEFAULT_PAGE_SIZE, refPrefix:\"refs/heads/\") { nodes { name target { oid} } } } } } }" }"""
+    fun parseGraphQLResponse(response: String): GraphQLDataUser {
+        val type = object : TypeToken<GraphQLResponse>() {}.type
+        val data = gson.fromJson<GraphQLResponse>(response, type)
+        return data.data.user
+    }
+
+    fun getReposWithBranchesGraphQL(username: String): GraphQLDataUser {
+        val query = """{ "query": "query{ user(login: \"$username\") { login repositories(isFork: false, first: $DEFAULT_PAGE_SIZE) { nodes { name refs(first: $DEFAULT_PAGE_SIZE, refPrefix:\"refs/heads/\") { nodes { name target { oid } } } } } } }" }"""
         val response = executeGraphQLQuery(query)
-        return response
+        return parseGraphQLResponse(response)
     }
 
     fun executeGraphQLQuery(query: String): String {

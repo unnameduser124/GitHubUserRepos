@@ -3,7 +3,6 @@ package com.ozarski.githubuserrepo.controllers
 import com.google.gson.Gson
 import com.ozarski.githubuserrepo.GitHubAPIRequestHandler
 import com.ozarski.githubuserrepo.dataclasses.ResultRepo
-import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
@@ -21,6 +20,15 @@ class BaseController(private val gitHubAPIRequestHandler: GitHubAPIRequestHandle
     ): ResponseEntity<Any> {
         val userRepos = gitHubAPIRequestHandler.getCompleteData(username)
         val formattedRepos = userRepos.map { ResultRepo(it) }
+        return ResponseEntity.ok(formattedRepos)
+    }
+
+    @GetMapping("/graphql/{username}")
+    fun userReposGraphQL(
+        @PathVariable username: String,
+    ): ResponseEntity<Any> {
+        val userRepos = gitHubAPIRequestHandler.getReposWithBranchesGraphQL(username)
+        val formattedRepos = userRepos.repositories.nodes.map{ ResultRepo(it, username) }
         return ResponseEntity.ok(formattedRepos)
     }
 }
