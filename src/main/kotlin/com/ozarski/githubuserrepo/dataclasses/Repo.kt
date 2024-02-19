@@ -1,10 +1,10 @@
 package com.ozarski.github_api.dataclasses
 
-import com.google.gson.annotations.Expose
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize
 
 data class Repo(
     val name: String,
     val fork: Boolean,
     val owner: Owner,
-    val branches: MutableList<Branch> = mutableListOf()
+    var branches: MutableList<Branch>
 )
