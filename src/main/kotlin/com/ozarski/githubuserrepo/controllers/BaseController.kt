@@ -2,6 +2,7 @@ package com.ozarski.githubuserrepo.controllers
 
 import com.google.gson.Gson
 import com.ozarski.githubuserrepo.GitHubAPIRequestHandler
+import com.ozarski.githubuserrepo.dataclasses.ResultRepo
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.GetMapping
@@ -19,6 +20,7 @@ class BaseController(private val gitHubAPIRequestHandler: GitHubAPIRequestHandle
         @PathVariable username: String,
     ): ResponseEntity<Any> {
         val userRepos = gitHubAPIRequestHandler.getCompleteData(username)
-        return ResponseEntity.ok(userRepos)
+        val formattedRepos = userRepos.map { ResultRepo(it) }
+        return ResponseEntity.ok(formattedRepos)
     }
 }
