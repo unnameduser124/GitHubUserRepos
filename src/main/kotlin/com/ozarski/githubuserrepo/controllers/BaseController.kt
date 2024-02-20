@@ -14,7 +14,7 @@ data class ErrorResponse(val status: Int, val message: String)
 class BaseController(private val gitHubAPIRequestHandler: GitHubAPIRequestHandler, private val gson: Gson) {
 
 
-    @GetMapping("/{username}")
+    @GetMapping("/repo/{username}")
     fun userRepos(
         @PathVariable username: String,
     ): ResponseEntity<Any> {
@@ -28,7 +28,6 @@ class BaseController(private val gitHubAPIRequestHandler: GitHubAPIRequestHandle
         @PathVariable username: String,
     ): ResponseEntity<Any> {
         val userRepos = gitHubAPIRequestHandler.getReposWithBranchesGraphQL(username)
-        val formattedRepos = userRepos.repositories.nodes.map{ ResultRepo(it, username) }
-        return ResponseEntity.ok(formattedRepos)
+        return ResponseEntity.ok(userRepos)
     }
 }

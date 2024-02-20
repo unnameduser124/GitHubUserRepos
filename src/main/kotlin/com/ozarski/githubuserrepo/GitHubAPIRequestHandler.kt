@@ -6,6 +6,7 @@ import com.ozarski.github_api.dataclasses.Branch
 import com.ozarski.github_api.dataclasses.Repo
 import com.ozarski.githubuserrepo.dataclasses.GraphQLDataUser
 import com.ozarski.githubuserrepo.dataclasses.GraphQLResponse
+import com.ozarski.githubuserrepo.dataclasses.ResultRepo
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -18,7 +19,7 @@ class GitHubAPIRequestHandler(private val okHttpClient: OkHttpClient, private va
 
 
     fun getRepos(user: String, page: Int = 1, pageSize: Int = DEFAULT_PAGE_SIZE): List<Repo> {
-        val url = "https://api.github.com/users/$user/repos?per_page=$pageSize&page=$page"
+        val url = "https://api.github.com/users/$user/repos?per_page=$pageSize&page=$page&type=all"
 
         val request = Request.Builder()
             .url(url)
@@ -28,7 +29,7 @@ class GitHubAPIRequestHandler(private val okHttpClient: OkHttpClient, private va
 
         val call = okHttpClient.newCall(request)
         val response = call.execute()
-        if(response.code != 200){
+        if (response.code != 200) {
             println("Error: ${response.code} ${response.message}")
             return emptyList()
         }
@@ -37,7 +38,7 @@ class GitHubAPIRequestHandler(private val okHttpClient: OkHttpClient, private va
         return gson.fromJson(json, itemType)
     }
 
-    fun getBranches(user: String, repoName: String, page: Int = 1, pageSize: Int = DEFAULT_PAGE_SIZE): List<Branch>?{
+    fun getBranches(user: String, repoName: String, page: Int = 1, pageSize: Int = DEFAULT_PAGE_SIZE): List<Branch>? {
         val url = "https://api.github.com/repos/$user/$repoName/branches?page=$page&per_page=$pageSize"
 
         val request = Request.Builder()
@@ -47,7 +48,7 @@ class GitHubAPIRequestHandler(private val okHttpClient: OkHttpClient, private va
             .build()
 
         val response = okHttpClient.newCall(request).execute()
-        if(response.code != 200){
+        if (response.code != 200) {
             println("Error: ${response.code} ${response.message}")
             return emptyList()
         }
@@ -66,14 +67,14 @@ class GitHubAPIRequestHandler(private val okHttpClient: OkHttpClient, private va
             val branches = mutableListOf<Branch>()
             var page = 1
             val tempBranches = getBranches(repo.owner.login, repo.name, page = 1)?.toMutableList()
-            whileLoop@ while(!tempBranches.isNullOrEmpty()){
+            whileLoop@ while (!tempBranches.isNullOrEmpty()) {
                 page++
                 branches.addAll(tempBranches)
-                if(tempBranches.size < DEFAULT_PAGE_SIZE) break
+                if (tempBranches.size < DEFAULT_PAGE_SIZE) break
                 tempBranches.clear()
 
-                with(getBranches(repo.owner.login, repo.name, page = page)){
-                    if(!this.isNullOrEmpty()) tempBranches.addAll(this)
+                with(getBranches(repo.owner.login, repo.name, page = page)) {
+                    if (!this.isNullOrEmpty()) tempBranches.addAll(this)
                 }
             }
             repo.branches = branches
@@ -81,17 +82,17 @@ class GitHubAPIRequestHandler(private val okHttpClient: OkHttpClient, private va
         return repos
     }
 
-    fun getCompleteData(username: String): List<Repo>{
+    fun getCompleteData(username: String): List<Repo> {
         val repos = mutableListOf<Repo>()
         var page = 1
 
         //var tempRepos = getNotForkedRepos(username, page = page)
         var tempRepos = getRepos(username, page = page)
 
-        while(tempRepos.isNotEmpty()){
+        while (tempRepos.isNotEmpty()) {
             page++
             repos.addAll(tempRepos)
-            if(tempRepos.size < DEFAULT_PAGE_SIZE) break
+            if (tempRepos.size < DEFAULT_PAGE_SIZE) break
             //tempRepos = getNotForkedRepos(username, page = page)
             tempRepos = getRepos(username, page = page)
         }
@@ -106,10 +107,19 @@ class GitHubAPIRequestHandler(private val okHttpClient: OkHttpClient, private va
         return data.data.user
     }
 
-    fun getReposWithBranchesGraphQL(username: String): GraphQLDataUser {
-        val query = """{ "query": "query{ user(login: \"$username\") { login repositories(isFork: false, first: $DEFAULT_PAGE_SIZE) { nodes { name refs(first: $DEFAULT_PAGE_SIZE, refPrefix:\"refs/heads/\") { nodes { name target { oid } } } } } } }" }"""
-        val response = executeGraphQLQuery(query)
-        return parseGraphQLResponse(response)
+    fun getReposWithBranchesGraphQL(username: String): List<ResultRepo> {
+        var after = "null"
+        val queryWithPaging =
+            """{ "query": "query{ user(login: \"$username\") { repositories(isFork: false, first: $DEFAULT_PAGE_SIZE, after: $after) { nodes { name owner { login } refs(first: $DEFAULT_PAGE_SIZE, refPrefix:\"refs/heads/\") { nodes { name target{ oid } } } } pageInfo{ hasNextPage endCursor } } } }" }"""
+        var response = executeGraphQLQuery(queryWithPaging)
+        val repoList = mutableListOf<ResultRepo>()
+        repoList.addAll(parseGraphQLResponse(response).repositories.nodes.map { ResultRepo(it) })
+        while (parseGraphQLResponse(response).repositories.pageInfo.hasNextPage) {
+            after = "\"${parseGraphQLResponse(response).repositories.pageInfo.endCursor}\""
+            response = executeGraphQLQuery(queryWithPaging)
+            repoList.addAll(parseGraphQLResponse(response).repositories.nodes.map { ResultRepo(it) })
+        }
+        return repoList
     }
 
     fun executeGraphQLQuery(query: String): String {
@@ -117,7 +127,7 @@ class GitHubAPIRequestHandler(private val okHttpClient: OkHttpClient, private va
 
         val request = Request.Builder()
             .url("https://api.github.com/graphql")
-            .addHeader("Authorization", "Bearer ${GitHubAPIConfig.PERSONAL_ACCESS_TOKEN}")
+            .header("Authorization", "Bearer ${GitHubAPIConfig.PERSONAL_ACCESS_TOKEN}")
             .post(requestBody)
             .build()
 
@@ -129,7 +139,7 @@ class GitHubAPIRequestHandler(private val okHttpClient: OkHttpClient, private va
         return response.body?.string() ?: ""
     }
 
-    companion object{
+    companion object {
         const val DEFAULT_PAGE_SIZE = 100
     }
 
