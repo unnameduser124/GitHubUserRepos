@@ -57,26 +57,24 @@ class GitHubAPIRequestHandler(private val okHttpClient: OkHttpClient, private va
         return gson.fromJson(json, itemType)
     }
 
-    fun getNotForkedRepos(user: String, page: Int = 1, pageSize: Int = DEFAULT_PAGE_SIZE): List<Repo> {
-        val allRepos = getRepos(user, page, pageSize)
-        return allRepos.filter { !it.fork }
-    }
-
     fun getReposWithBranches(repos: List<Repo>): List<Repo> {
         for (repo in repos) {
             val branches = mutableListOf<Branch>()
             var page = 1
-            val tempBranches = getBranches(repo.owner.login, repo.name, page = 1)?.toMutableList()
-            whileLoop@ while (!tempBranches.isNullOrEmpty()) {
-                page++
-                branches.addAll(tempBranches)
-                if (tempBranches.size < DEFAULT_PAGE_SIZE) break
-                tempBranches.clear()
-
+            var responseSize = 0
+            do{
                 with(getBranches(repo.owner.login, repo.name, page = page)) {
-                    if (!this.isNullOrEmpty()) tempBranches.addAll(this)
+                    if (!this.isNullOrEmpty()){
+                        responseSize = this.size
+                        branches.addAll(this)
+                    }
+                    else{
+                        responseSize = 0
+                    }
                 }
+                page++
             }
+            while (responseSize == DEFAULT_PAGE_SIZE)
             repo.branches = branches
         }
         return repos
@@ -93,15 +91,16 @@ class GitHubAPIRequestHandler(private val okHttpClient: OkHttpClient, private va
             page++
             repos.addAll(tempRepos)
             if (tempRepos.size < DEFAULT_PAGE_SIZE) break
-            //tempRepos = getNotForkedRepos(username, page = page)
             tempRepos = getRepos(username, page = page)
         }
+        val filteredRepos = repos.filter { !it.fork }
 
-        return getReposWithBranches(repos)
+        return getReposWithBranches(filteredRepos)
     }
 
     //solution using GraphQL API (same result data but less requests)
-    fun parseGraphQLResponse(response: String): GraphQLDataUser {
+    fun parseGraphQLResponse(response: String): GraphQLDataUser? {
+        if(response.isEmpty()) return null
         val type = object : TypeToken<GraphQLResponse>() {}.type
         val data = gson.fromJson<GraphQLResponse>(response, type)
         return data.data.user
@@ -109,15 +108,20 @@ class GitHubAPIRequestHandler(private val okHttpClient: OkHttpClient, private va
 
     fun getReposWithBranchesGraphQL(username: String): List<ResultRepo> {
         var after = "null"
-        val queryWithPaging =
+        var queryWithPaging =
             """{ "query": "query{ user(login: \"$username\") { repositories(isFork: false, first: $DEFAULT_PAGE_SIZE, after: $after) { nodes { name owner { login } refs(first: $DEFAULT_PAGE_SIZE, refPrefix:\"refs/heads/\") { nodes { name target{ oid } } } } pageInfo{ hasNextPage endCursor } } } }" }"""
         var response = executeGraphQLQuery(queryWithPaging)
         val repoList = mutableListOf<ResultRepo>()
-        repoList.addAll(parseGraphQLResponse(response).repositories.nodes.map { ResultRepo(it) })
-        while (parseGraphQLResponse(response).repositories.pageInfo.hasNextPage) {
-            after = "\"${parseGraphQLResponse(response).repositories.pageInfo.endCursor}\""
+        var parsedResponse = parseGraphQLResponse(response) ?: return emptyList()
+        repoList.addAll(parsedResponse.repositories.nodes.map { ResultRepo(it) })
+
+        while (parsedResponse.repositories.pageInfo.hasNextPage) {
+            after = """\"${parsedResponse.repositories.pageInfo.endCursor}\""""
+            queryWithPaging =
+                """{ "query": "query{ user(login: \"$username\") { repositories(isFork: false, first: $DEFAULT_PAGE_SIZE, after: $after) { nodes { name owner { login } refs(first: $DEFAULT_PAGE_SIZE, refPrefix:\"refs/heads/\") { nodes { name target{ oid } } } } pageInfo{ hasNextPage endCursor } } } }" }"""
             response = executeGraphQLQuery(queryWithPaging)
-            repoList.addAll(parseGraphQLResponse(response).repositories.nodes.map { ResultRepo(it) })
+            parsedResponse = parseGraphQLResponse(response) ?: break
+            repoList.addAll(parsedResponse.repositories.nodes.map { ResultRepo(it) })
         }
         return repoList
     }
