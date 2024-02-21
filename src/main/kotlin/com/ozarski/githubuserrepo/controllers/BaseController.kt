@@ -20,6 +20,9 @@ class BaseController(private val gitHubAPIRequestHandler: GitHubAPIRequestHandle
     ): ResponseEntity<Any> {
         val userRepos = gitHubAPIRequestHandler.getCompleteData(username)
         val formattedRepos = userRepos.map { ResultRepo(it) }
+        if(formattedRepos.isEmpty()) {
+            return ResponseEntity.status(404).body(ErrorResponse(404, "User not found"))
+        }
         return ResponseEntity.ok(formattedRepos)
     }
 
@@ -28,6 +31,9 @@ class BaseController(private val gitHubAPIRequestHandler: GitHubAPIRequestHandle
         @PathVariable username: String,
     ): ResponseEntity<Any> {
         val userRepos = gitHubAPIRequestHandler.getReposWithBranchesGraphQL(username)
+        if(userRepos.isEmpty()) {
+            return ResponseEntity.status(404).body(ErrorResponse(404, "User not found"))
+        }
         return ResponseEntity.ok(userRepos)
     }
 }
